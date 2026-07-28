@@ -6,8 +6,8 @@ import User from '@/models/User';
 export async function POST(req: Request) {
   try {
     await dbConnect();
-    // Added 'duration' to the destructured JSON request
-    const { title, subject, duration, questions, adminEmail } = await req.json();
+    // Added 'duration' and 'startTime' to the destructured JSON request
+    const { title, subject, duration, startTime, questions, adminEmail } = await req.json();
 
     // Find the admin user to link the test creation
     const admin = await User.findOne({ email: adminEmail });
@@ -15,11 +15,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: 'Admin user not found' }, { status: 404 });
     }
 
-    // Create and save the new test, now including 'duration'
+    // Create and save the new test, now including 'duration' and 'startTime'
     const newTest = await Test.create({
       title,
       subject,
-      duration, 
+      duration,
+      startTime, // NEW: Include startTime in the database payload
       questions,
       createdBy: admin._id
     });

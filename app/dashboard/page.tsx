@@ -8,7 +8,8 @@ export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   
-  const [formData, setFormData] = useState({ title: '', subject: '', duration: 30, jsonQuestions: '' });
+  // ADDED: scheduledTime to the state
+  const [formData, setFormData] = useState({ title: '', subject: '', duration: 30, jsonQuestions: '', scheduledTime: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -102,6 +103,14 @@ export default function Dashboard() {
     setMessage('');
     try {
       const parsedQuestions = JSON.parse(formData.jsonQuestions);
+      
+      // NEW LOGIC: Enforce strict IST Timezone mapping
+      let finalStartTime = null;
+      if (formData.scheduledTime) {
+        // Appending +05:30 ensures the browser converts it to absolute IST regardless of local PC time
+        finalStartTime = new Date(`${formData.scheduledTime}+05:30`).toISOString();
+      }
+
       const res = await fetch('/api/save-quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,15 +120,16 @@ export default function Dashboard() {
           duration: Number(formData.duration),
           questions: parsedQuestions,
           adminEmail: session?.user?.email, 
+          startTime: finalStartTime, // Added to payload
         }),
       });
       if (res.ok) {
-        setMessage('Quiz deployed to the mainframe. 🚀');
-        setFormData({ title: '', subject: '', duration: 30, jsonQuestions: '' });
+        setMessage('Protocol deployed to the mainframe. 🚀');
+        setFormData({ title: '', subject: '', duration: 30, jsonQuestions: '', scheduledTime: '' });
         fetchArchive(); 
         fetchLeaderboard(); 
       } else {
-        setMessage('Failed to publish quiz');
+        setMessage('Failed to publish assessment');
       }
     } catch (error) {
       setMessage('Invalid JSON format. Please check your syntax.');
@@ -144,7 +154,7 @@ export default function Dashboard() {
         <div className="bg-zinc-900 p-6 md:p-8 rounded-2xl border border-zinc-800 text-center max-w-md w-full shadow-2xl">
           <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-6 text-2xl md:text-3xl">⏳</div>
           <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest mb-2 text-zinc-100">Awaiting Clearance</h2>
-          <p className="text-zinc-500 mb-8 text-sm md:text-base leading-relaxed">Your registration has been logged. Access to Quiz Nexus will be granted once the Commander verifies your identity.</p>
+          <p className="text-zinc-500 mb-8 text-sm md:text-base leading-relaxed">Your registration has been logged. Access to Quiz Nexus will be granted once the Admin verifies your identity.</p>
           <button onClick={() => signOut({ callbackUrl: '/' })} className="w-full bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl transition-colors uppercase tracking-widest text-xs md:text-sm shadow-lg">
             Return to Login
           </button>
@@ -207,13 +217,27 @@ export default function Dashboard() {
                       <input type="text" placeholder="Subject" value={formData.subject} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all text-sm md:text-base" onChange={(e) => setFormData({ ...formData, subject: e.target.value })} required />
                       <input type="number" placeholder="Mins" min="1" value={formData.duration} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all text-sm md:text-base" onChange={(e) => setFormData({ ...formData, duration: Number(e.target.value) })} required />
                     </div>
-                    {/* FIXED: Removed md:rows, set regular rows to 8 */}
+
+                    {/* NEW: Schedule Input Field */}
+                    <div className="mb-2">
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Schedule Deployment (Optional - IST)</label>
+                      <input 
+                        type="datetime-local" 
+                        value={formData.scheduledTime} 
+                        className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all text-sm md:text-base [color-scheme:dark]" 
+                        onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })} 
+                      />
+                    </div>
+
                     <textarea placeholder="Paste JSON Array here..." rows={8} value={formData.jsonQuestions} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-rose-200/80 placeholder-zinc-700 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono text-xs md:text-sm transition-all" onChange={(e) => setFormData({ ...formData, jsonQuestions: e.target.value })} required />
+                    
+                    {/* NEW: Dynamic Button Text */}
                     <button type="submit" disabled={isLoading} className="w-full bg-gradient-to-r from-rose-600 to-orange-500 text-white p-4 rounded-xl font-black uppercase tracking-widest text-sm hover:scale-[1.01] transition-transform shadow-[0_0_20px_rgba(225,29,72,0.15)] disabled:opacity-50 disabled:scale-100">
-                      {isLoading ? 'Encrypting Payload...' : 'Deploy Protocol'}
+                      {isLoading ? 'Encrypting Payload...' : formData.scheduledTime ? 'Schedule Protocol' : 'Deploy Protocol Live'}
                     </button>
+
                     {message && (
-                      <div className={`p-4 rounded-xl text-center font-mono text-xs md:text-sm uppercase tracking-wide border ${message.includes('success') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
+                      <div className={`p-4 rounded-xl text-center font-mono text-xs md:text-sm uppercase tracking-wide border ${message.includes('success') || message.includes('mainframe') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'}`}>
                         {message}
                       </div>
                     )}
@@ -276,18 +300,24 @@ export default function Dashboard() {
                 <p className="text-zinc-600 text-sm font-medium">No transmissions found.</p>
               ) : (
                 <div className="space-y-3 md:space-y-4">
-                  {archive.map((test: any) => (
-                    <div key={test._id} className="p-4 border border-zinc-800 rounded-xl bg-zinc-950/40 hover:border-rose-500/50 transition-colors flex justify-between items-center group relative overflow-hidden">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  {archive.map((test: any) => {
+                    // NEW: Calculate if test is in the future
+                    const isScheduled = test.startTime && new Date(test.startTime).getTime() > Date.now();
+                    
+                    return (
+                    <div key={test._id} className={`p-4 border rounded-xl transition-colors flex justify-between items-center group relative overflow-hidden ${isScheduled ? 'border-amber-500/20 bg-zinc-950/40' : 'border-zinc-800 bg-zinc-950/40 hover:border-rose-500/50'}`}>
+                      <div className={`absolute top-0 left-0 w-1 h-full ${isScheduled ? 'bg-amber-500' : 'bg-rose-500 opacity-0 group-hover:opacity-100 transition-opacity'}`}></div>
                       <div className="pr-4">
                         <h3 className="font-bold text-zinc-200 line-clamp-1">{test.title}</h3>
-                        <p className="text-xs text-zinc-500 mt-1 uppercase tracking-wide">{test.subject} • {test.duration}m</p>
+                        <p className="text-xs text-zinc-500 mt-1 uppercase tracking-wide">
+                          {isScheduled ? <span className="text-amber-400 font-bold text-[10px] md:text-xs">Scheduled</span> : `${test.subject} • ${test.duration}m`}
+                        </p>
                       </div>
-                      <button onClick={() => router.push(`/test/${test._id}`)} className="px-3 py-2 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all shrink-0">
-                        Enter
+                      <button onClick={() => router.push(`/test/${test._id}`)} className={`px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all shrink-0 ${isScheduled ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-zinc-950' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white'}`}>
+                        {isScheduled ? 'Standby' : 'Enter'}
                       </button>
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
             </div>
@@ -318,7 +348,7 @@ export default function Dashboard() {
 
               {/* Overall Section */}
               <div>
-                <h2 className="text-sm md:text-base font-bold text-orange-400 mb-4 border-b border-zinc-800 pb-3 uppercase tracking-widest">Global Vanguard</h2>
+                <h2 className="text-sm md:text-base font-bold text-orange-400 mb-4 border-b border-zinc-800 pb-3 uppercase tracking-widest">Overall Vanguard</h2>
                 <div className="space-y-2">
                   {overallLeaderboard.length === 0 ? (
                     <p className="text-zinc-600 text-sm font-medium italic">No global records established.</p>
