@@ -56,7 +56,7 @@ export default function VanguardBanner() {
           </p>
         ) : (
           <p className="text-gray-400">
-            You need <span className="text-orange-500 font-bold text-2xl mx-1">{pointsNeeded}</span> more points to claim 1st place.
+            You need <span className="text-orange-500 font-bold text-2xl mx-1">{pointsNeeded}</span> more point(s) to claim 1st place.
           </p>
         )}
       </div>
