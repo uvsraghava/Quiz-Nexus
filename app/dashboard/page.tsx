@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import VanguardBanner from '@/app/components/VanguardBanner'; // NEW: Imported Banner
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -141,9 +142,9 @@ export default function Dashboard() {
           questions: parsedQuestions,
           adminEmail: session?.user?.email, 
           startTime: finalStartTime,
-          testType: formData.testType, // Added testType
-          caseStudyText: formData.testType === 'descriptive' ? formData.caseStudyText : undefined, // Added Case Study
-          maxMarks: formData.testType === 'descriptive' ? Number(formData.maxMarks) : undefined // Added Max Marks
+          testType: formData.testType,
+          caseStudyText: formData.testType === 'descriptive' ? formData.caseStudyText : undefined,
+          maxMarks: formData.testType === 'descriptive' ? Number(formData.maxMarks) : undefined
         }),
       });
       if (res.ok) {
@@ -224,6 +225,9 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* NEW: Vanguard Banner Display */}
+        <VanguardBanner />
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
           
           <div className="lg:col-span-2 space-y-6 md:space-y-8">
@@ -235,7 +239,7 @@ export default function Dashboard() {
                     Deploy Assessment
                   </h2>
                   
-                  {/* NEW: Deployment Mode Toggle */}
+                  {/* Deployment Mode Toggle */}
                   <div className="flex space-x-2 mb-6 p-1 bg-zinc-950/80 rounded-xl border border-zinc-800/80">
                     <button 
                       onClick={() => setFormData({...formData, testType: 'mcq'})} 
@@ -268,7 +272,7 @@ export default function Dashboard() {
                       />
                     </div>
 
-                    {/* NEW: Conditional UI for Case Study Mode */}
+                    {/* Conditional UI for Case Study Mode */}
                     {formData.testType === 'descriptive' && (
                       <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div>
@@ -303,7 +307,7 @@ export default function Dashboard() {
                   </form>
                 </div>
 
-                {/* NEW: Evaluation Queue Component */}
+                {/* Evaluation Queue Component */}
                 <div className="bg-zinc-900/40 backdrop-blur-xl p-5 md:p-8 rounded-2xl border border-purple-500/20 shadow-2xl relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
                   <h2 className="text-lg md:text-xl font-bold mb-6 text-purple-400 uppercase tracking-widest flex items-center">
@@ -367,7 +371,7 @@ export default function Dashboard() {
                       <div className="pl-2">
                         <h3 className="font-bold text-zinc-200 truncate pr-2">{sub.testId?.title || 'Unknown Test'}</h3>
                         <p className="text-xs text-zinc-500 mt-1 font-mono uppercase">
-                          {/* Adapt archive to show pending vs graded status */
+                          {
                            sub.status === 'pending' ? <span className="text-purple-400 font-bold">Pending Review</span> : `Score: ${sub.score} / ${sub.totalQuestions}`
                           }
                         </p>
@@ -391,7 +395,7 @@ export default function Dashboard() {
                 <div className="space-y-3 md:space-y-4">
                   {archive.map((test: any) => {
                     const isScheduled = test.startTime && new Date(test.startTime).getTime() > Date.now();
-                    const isDescriptive = test.testType === 'descriptive'; // Flag to style descriptive tests
+                    const isDescriptive = test.testType === 'descriptive'; 
                     
                     return (
                     <div key={test._id} className={`p-4 border rounded-xl transition-colors flex justify-between items-center group relative overflow-hidden ${isScheduled ? 'border-amber-500/20 bg-zinc-950/40' : 'border-zinc-800 bg-zinc-950/40 hover:border-rose-500/50'}`}>
