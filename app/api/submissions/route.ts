@@ -32,21 +32,29 @@ export async function POST(req: Request) {
     
     if (!user || !test) return NextResponse.json({ message: 'Not found' }, { status: 404 });
 
-    // GRADE THE TEST
     let score = 0;
-    test.questions.forEach((q: any, idx: number) => {
-      if (answers[idx] === q.correctAnswer) {
-        score += 1;
-      }
-    });
+    let submissionStatus = 'graded'; // Default to graded for MCQs
 
-    // FIXED: Added 'answers' to the database creation payload
+    // NEW: Logic Bypass for Descriptive Case Studies
+    if (test.testType === 'descriptive') {
+      submissionStatus = 'pending';
+    } else {
+      // GRADE THE MCQ TEST
+      test.questions.forEach((q: any, idx: number) => {
+        if (answers[idx] === q.correctAnswer) {
+          score += 1;
+        }
+      });
+    }
+
+    // FIXED: Added 'answers' and 'status' to the database creation payload
     await Submission.create({
       testId: testId,
       userId: user._id,
       score: score,
       totalQuestions: test.questions.length,
-      answers: answers // This ensures the answers are actually saved to MongoDB!
+      answers: answers, 
+      status: submissionStatus // This routes it directly to your Evaluation Queue!
     });
 
     return NextResponse.json({ message: 'Success', score, total: test.questions.length }, { status: 201 });
