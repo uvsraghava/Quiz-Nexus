@@ -4,12 +4,15 @@ import Submission from '@/models/Submission';
 import User from '@/models/User';
 import Test from '@/models/Test';
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     await dbConnect();
     
-    // The ID from the URL is the Submission ID
-    const submissionId = params.id;
+    const resolvedParams = await params;
+    const submissionId = resolvedParams.id;
     
     const submission = await Submission.findById(submissionId)
       .populate('testId')
