@@ -119,19 +119,36 @@ export default function Dashboard() {
     e.preventDefault();
     setIsLoading(true);
     setMessage('');
+    
     try {
-      let parsedQuestions = JSON.parse(formData.jsonQuestions);
+      // 1. ISOLATE JSON PARSING
+      let parsedQuestions;
+      try {
+        parsedQuestions = JSON.parse(formData.jsonQuestions);
+      } catch (jsonError) {
+        // If it fails here, we know with 100% certainty it is the JSON
+        throw new Error('INVALID JSON FORMAT. PLEASE CHECK YOUR SYNTAX.');
+      }
       
       // Auto-format strings to question objects if deploying Case Study mode
       if (formData.testType === 'descriptive' && typeof parsedQuestions[0] === 'string') {
         parsedQuestions = parsedQuestions.map((q: string) => ({ questionText: q }));
       }
 
+      // 2. ISOLATE AND FIX DATE PARSING
       let finalStartTime = null;
       if (formData.scheduledTime) {
-        finalStartTime = new Date(`${formData.scheduledTime}+05:30`).toISOString();
+        // Ensure standard HTML5 format (YYYY-MM-DDThh:mm) maps perfectly to IST
+        const dateObj = new Date(`${formData.scheduledTime}+05:30`);
+        
+        // Failsafe to catch Safari/Mobile date formatting quirks before they crash the app
+        if (isNaN(dateObj.getTime())) {
+          throw new Error('INVALID DATE FORMAT. BROWSER PASSED UNREADABLE TIME STRING.');
+        }
+        finalStartTime = dateObj.toISOString();
       }
 
+      // 3. SECURE DEPLOYMENT
       const res = await fetch('/api/save-quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,16 +164,20 @@ export default function Dashboard() {
           maxMarks: formData.testType === 'descriptive' ? Number(formData.maxMarks) : undefined
         }),
       });
+      
       if (res.ok) {
         setMessage('Protocol deployed to the mainframe. 🚀');
+        // Reset the form on success
         setFormData({ title: '', subject: '', duration: 30, jsonQuestions: '', scheduledTime: '', testType: 'mcq', caseStudyText: '', maxMarks: 100 });
         fetchArchive(); 
         fetchLeaderboard(); 
       } else {
-        setMessage('Failed to publish assessment');
+        throw new Error('FAILED TO PUBLISH ASSESSMENT TO DATABASE.');
       }
-    } catch (error) {
-      setMessage('Invalid JSON format. Please check your syntax.');
+      
+    } catch (error: any) {
+      // This will now dynamically display the exact error that tripped the system
+      setMessage(error.message || 'SYSTEM ERROR OCCURRED DURING DEPLOYMENT.');
     } finally {
       setIsLoading(false);
     }
