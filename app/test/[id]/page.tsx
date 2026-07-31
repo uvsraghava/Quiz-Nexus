@@ -68,6 +68,22 @@ export default function TestTakingInterface() {
     if (id) fetchTestAndStatus();
   }, [id, session, status]);
 
+  // --- NEW ANTI-CHEAT PROTOCOL: AUTO-SUBMIT ON TAB SWITCH ---
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // If the document is hidden (user switched tabs) AND the test is active, auto-submit.
+      if (document.hidden && test && !isLocked && !alreadyTaken && !isSubmitting && !resultState) {
+        submitTest();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [test, isLocked, alreadyTaken, isSubmitting, resultState, selectedAnswers, id, session]); 
+  // -----------------------------------------------------------
+
   useEffect(() => {
     if (!isLocked || lockCountdown <= 0) {
       if (isLocked && lockCountdown <= 0) setIsLocked(false);
@@ -79,7 +95,7 @@ export default function TestTakingInterface() {
 
   useEffect(() => {
     if (isLocked || timeLeft === null || timeLeft <= 0 || alreadyTaken) {
-      if (!isLocked && timeLeft === 0 && !isSubmitting && !alreadyTaken) submitTest();
+      if (!isLocked && timeLeft === 0 && !isSubmitting && !alreadyTaken && !resultState) submitTest();
       return;
     }
     const timerId = setInterval(() => setTimeLeft((prev) => (prev ? prev - 1 : 0)), 1000);
@@ -128,7 +144,6 @@ export default function TestTakingInterface() {
     );
   }
 
-  // UPDATED: Result Screen differentiates between MCQ (score) and Descriptive (pending)
   if (resultState) {
     const isPending = test?.testType === 'descriptive';
     

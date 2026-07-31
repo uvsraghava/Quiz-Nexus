@@ -86,6 +86,19 @@ export default function ReviewPage() {
           </div>
         </div>
 
+        {/* --- ADDED FEATURE: CASE STUDY DOCUMENT LOG --- */}
+        {isDescriptive && test.caseStudyText && (
+          <div className="bg-zinc-900/40 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-purple-500/20 shadow-2xl mb-6 md:mb-8">
+            <h3 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4 border-b border-purple-500/20 pb-3 flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+              Reference Document (Case Study)
+            </h3>
+            <div className="prose prose-invert max-w-none text-zinc-300 font-sans leading-relaxed text-sm md:text-base whitespace-pre-wrap">
+              {test.caseStudyText}
+            </div>
+          </div>
+        )}
+
         {/* FEEDBACK MODULE (For Graded Descriptive Tests) */}
         {isDescriptive && !isPending && submission.feedback && (
           <div className="bg-purple-950/20 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-purple-500/30 shadow-[0_0_30px_rgba(168,85,247,0.05)]">

@@ -34,7 +34,7 @@ export async function GET() {
     }
 
     // 2. OVERALL LEADERBOARD
-    // Aggregate cumulative scores for all users across all tests
+    // Aggregate cumulative scores for all users across all tests. (LIMIT REMOVED)
     const overallAgg = await Submission.aggregate([
       { 
         $group: { 
@@ -43,8 +43,7 @@ export async function GET() {
           totalPossible: { $sum: '$totalQuestions' }
         } 
       },
-      { $sort: { totalScore: -1 } },
-      { $limit: 10 }
+      { $sort: { totalScore: -1 } }
     ]);
 
     // Safely map User data to the aggregated results to avoid serverless lookup bugs
