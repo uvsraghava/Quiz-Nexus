@@ -19,7 +19,10 @@ export async function POST(req: Request) {
     user.resetTokenExpiry = resetTokenExpiry;
     await user.save();
 
-    const resetUrl = `${process.env.NEXTAUTH_URL}/reset-password?token=${resetToken}`;
+    // --- NEW: Dynamic URL Resolution ---
+    // Automatically grabs 'http://localhost:3000' in dev or 'https://quiz-nexus.vercel.app' in prod
+    const requestUrl = new URL(req.url);
+    const resetUrl = `${requestUrl.origin}/reset-password?token=${resetToken}`;
 
     await sendMail({
       to: email,
@@ -36,6 +39,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ message: 'Email sent' }, { status: 200 });
   } catch (error) {
+    console.error('Password reset error:', error);
     return NextResponse.json({ message: 'Error' }, { status: 500 });
   }
 }
