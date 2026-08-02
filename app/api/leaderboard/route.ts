@@ -5,7 +5,6 @@ import User from '@/models/User';
 import Test from '@/models/Test';
 
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 export async function GET() {
   try {
@@ -33,9 +32,28 @@ export async function GET() {
       }));
     }
 
-    // 2. OVERALL LEADERBOARD
-    // Aggregate cumulative scores for all users across all tests. (LIMIT REMOVED)
+    // --- NEW: VANGUARD SEASONAL CYCLE LOGIC ---
+    // Fetch all tests sorted oldest to newest to calculate the current 3-test block
+    const allTests = await Test.find({}).sort({ createdAt: 1 }).select('_id');
+    const totalTests = allTests.length;
+    let currentCycleTestIds: any[] = [];
+
+    if (totalTests > 0) {
+      // Logic: Tests 1-3 = Index 0. Tests 4-6 = Index 3. Tests 7-9 = Index 6.
+      const cycleStartIndex = Math.floor((totalTests - 1) / 3) * 3;
+      
+      // Isolate only the test IDs belonging to the current active season
+      currentCycleTestIds = allTests.slice(cycleStartIndex).map(t => t._id);
+    }
+
+    // 2. OVERALL LEADERBOARD (SEASONAL)
+    // Aggregate cumulative scores ONLY for tests in the current cycle block
     const overallAgg = await Submission.aggregate([
+      {
+        $match: { 
+          testId: { $in: currentCycleTestIds } 
+        }
+      },
       { 
         $group: { 
           _id: '$userId', 
