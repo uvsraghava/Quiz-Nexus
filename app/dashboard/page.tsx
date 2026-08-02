@@ -3,13 +3,12 @@
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import VanguardBanner from '@/app/components/VanguardBanner'; // NEW: Imported Banner
+import VanguardBanner from '@/app/components/VanguardBanner';
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
   
-  // UPDATED: Added testType, caseStudyText, and maxMarks
   const [formData, setFormData] = useState({ 
     title: '', subject: '', duration: 30, jsonQuestions: '', scheduledTime: '',
     testType: 'mcq', caseStudyText: '', maxMarks: 100
@@ -23,12 +22,14 @@ export default function Dashboard() {
   const [archive, setArchive] = useState([]); 
   const [myHistory, setMyHistory] = useState([]);
   const [pendingUsers, setPendingUsers] = useState([]);
-  const [pendingEvaluations, setPendingEvaluations] = useState([]); // NEW: State for subjective grading
+  const [pendingEvaluations, setPendingEvaluations] = useState([]); 
   
   // Leaderboard States
   const [recentLeaderboard, setRecentLeaderboard] = useState([]);
   const [overallLeaderboard, setOverallLeaderboard] = useState([]);
   const [recentTitle, setRecentTitle] = useState('Loading...');
+  const [currentSeason, setCurrentSeason] = useState(1);
+  const [previousVanguards, setPreviousVanguards] = useState<any>(null); // NEW: Hall of Fame State
   
   // Authorization States
   const [isAdmin, setIsAdmin] = useState(false);
@@ -53,7 +54,7 @@ export default function Dashboard() {
         if (data.role === 'admin') {
           setIsAdmin(true);
           fetchPendingUsers();
-          fetchPendingEvaluations(); // NEW: Fetch subjective tests needing review
+          fetchPendingEvaluations();
         }
       }
     } catch (error) { console.error("Auth check failed"); } 
@@ -67,7 +68,6 @@ export default function Dashboard() {
     } catch (error) { console.error("Failed to fetch pending applications"); }
   };
 
-  // NEW: Fetch pending descriptive evaluations
   const fetchPendingEvaluations = async () => {
     try {
       const res = await fetch(`/api/admin/evaluations?email=${session?.user?.email}`);
@@ -104,6 +104,8 @@ export default function Dashboard() {
         setRecentLeaderboard(data.recentLeaderboard || []);
         setOverallLeaderboard(data.overallLeaderboard || []);
         setRecentTitle(data.recentTitle || 'Unknown Test');
+        if (data.currentSeason) setCurrentSeason(data.currentSeason);
+        if (data.previousVanguards) setPreviousVanguards(data.previousVanguards); // SETTING HALL OF FAME
       }
     } catch (error) { console.error("Failed to fetch leaderboard"); }
   };
@@ -121,34 +123,26 @@ export default function Dashboard() {
     setMessage('');
     
     try {
-      // 1. ISOLATE JSON PARSING
       let parsedQuestions;
       try {
         parsedQuestions = JSON.parse(formData.jsonQuestions);
       } catch (jsonError) {
-        // If it fails here, we know with 100% certainty it is the JSON
         throw new Error('INVALID JSON FORMAT. PLEASE CHECK YOUR SYNTAX.');
       }
       
-      // Auto-format strings to question objects if deploying Case Study mode
       if (formData.testType === 'descriptive' && typeof parsedQuestions[0] === 'string') {
         parsedQuestions = parsedQuestions.map((q: string) => ({ questionText: q }));
       }
 
-      // 2. ISOLATE AND FIX DATE PARSING
       let finalStartTime = null;
       if (formData.scheduledTime) {
-        // Ensure standard HTML5 format (YYYY-MM-DDThh:mm) maps perfectly to IST
         const dateObj = new Date(`${formData.scheduledTime}+05:30`);
-        
-        // Failsafe to catch Safari/Mobile date formatting quirks before they crash the app
         if (isNaN(dateObj.getTime())) {
           throw new Error('INVALID DATE FORMAT. BROWSER PASSED UNREADABLE TIME STRING.');
         }
         finalStartTime = dateObj.toISOString();
       }
 
-      // 3. SECURE DEPLOYMENT
       const res = await fetch('/api/save-quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,7 +161,6 @@ export default function Dashboard() {
       
       if (res.ok) {
         setMessage('Protocol deployed to the mainframe. 🚀');
-        // Reset the form on success
         setFormData({ title: '', subject: '', duration: 30, jsonQuestions: '', scheduledTime: '', testType: 'mcq', caseStudyText: '', maxMarks: 100 });
         fetchArchive(); 
         fetchLeaderboard(); 
@@ -176,14 +169,11 @@ export default function Dashboard() {
       }
       
     } catch (error: any) {
-      // This will now dynamically display the exact error that tripped the system
       setMessage(error.message || 'SYSTEM ERROR OCCURRED DURING DEPLOYMENT.');
     } finally {
       setIsLoading(false);
     }
   };
-
-  // --- RENDERING BLOCK ---
 
   if (status === 'loading' || authChecking) {
     return (
@@ -212,7 +202,6 @@ export default function Dashboard() {
     <div className="min-h-screen bg-zinc-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 text-zinc-200 p-4 md:p-8 font-sans selection:bg-rose-500/30">
       <div className="max-w-7xl mx-auto space-y-8 md:space-y-10">
         
-        {/* TOP NAVBAR */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-zinc-800/80 pb-6 relative gap-4 md:gap-0">
           <div>
             <h1 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-orange-400 drop-shadow-sm">
@@ -246,8 +235,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* NEW: Vanguard Banner Display */}
-        <VanguardBanner />
+        <VanguardBanner leaderboard={overallLeaderboard} currentUserEmail={session?.user?.email} season={currentSeason} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
           
@@ -260,20 +248,9 @@ export default function Dashboard() {
                     Deploy Assessment
                   </h2>
                   
-                  {/* Deployment Mode Toggle */}
                   <div className="flex space-x-2 mb-6 p-1 bg-zinc-950/80 rounded-xl border border-zinc-800/80">
-                    <button 
-                      onClick={() => setFormData({...formData, testType: 'mcq'})} 
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'mcq' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}
-                    >
-                      MCQ Matrix
-                    </button>
-                    <button 
-                      onClick={() => setFormData({...formData, testType: 'descriptive'})} 
-                      className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'descriptive' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}
-                    >
-                      Case Study
-                    </button>
+                    <button onClick={() => setFormData({...formData, testType: 'mcq'})} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'mcq' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}>MCQ Matrix</button>
+                    <button onClick={() => setFormData({...formData, testType: 'descriptive'})} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'descriptive' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}>Case Study</button>
                   </div>
 
                   <form onSubmit={handleSubmit} className="space-y-5 md:space-y-6">
@@ -285,15 +262,9 @@ export default function Dashboard() {
 
                     <div className="mb-2">
                       <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Schedule Deployment (Optional - IST)</label>
-                      <input 
-                        type="datetime-local" 
-                        value={formData.scheduledTime} 
-                        className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all text-sm md:text-base [color-scheme:dark]" 
-                        onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })} 
-                      />
+                      <input type="datetime-local" value={formData.scheduledTime} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all text-sm md:text-base [color-scheme:dark]" onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })} />
                     </div>
 
-                    {/* Conditional UI for Case Study Mode */}
                     {formData.testType === 'descriptive' && (
                       <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div>
@@ -307,14 +278,7 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    <textarea 
-                      placeholder={formData.testType === 'mcq' ? "Paste MCQ JSON Array here..." : 'Paste Questions JSON Array here...\ne.g. [\n  "Analyze the current market strategy.",\n  "How does this affect overall ROI?"\n]'} 
-                      rows={formData.testType === 'mcq' ? 8 : 4} 
-                      value={formData.jsonQuestions} 
-                      className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-rose-200/80 placeholder-zinc-700 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono text-xs md:text-sm transition-all" 
-                      onChange={(e) => setFormData({ ...formData, jsonQuestions: e.target.value })} 
-                      required 
-                    />
+                    <textarea placeholder={formData.testType === 'mcq' ? "Paste MCQ JSON Array here..." : 'Paste Questions JSON Array here...\ne.g. [\n  "Analyze the current market strategy.",\n  "How does this affect overall ROI?"\n]'} rows={formData.testType === 'mcq' ? 8 : 4} value={formData.jsonQuestions} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-rose-200/80 placeholder-zinc-700 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono text-xs md:text-sm transition-all" onChange={(e) => setFormData({ ...formData, jsonQuestions: e.target.value })} required />
                     
                     <button type="submit" disabled={isLoading} className="w-full bg-gradient-to-r from-rose-600 to-orange-500 text-white p-4 rounded-xl font-black uppercase tracking-widest text-sm hover:scale-[1.01] transition-transform shadow-[0_0_20px_rgba(225,29,72,0.15)] disabled:opacity-50 disabled:scale-100">
                       {isLoading ? 'Encrypting Payload...' : formData.scheduledTime ? 'Schedule Protocol' : 'Deploy Protocol Live'}
@@ -328,7 +292,6 @@ export default function Dashboard() {
                   </form>
                 </div>
 
-                {/* Evaluation Queue Component */}
                 <div className="bg-zinc-900/40 backdrop-blur-xl p-5 md:p-8 rounded-2xl border border-purple-500/20 shadow-2xl relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
                   <h2 className="text-lg md:text-xl font-bold mb-6 text-purple-400 uppercase tracking-widest flex items-center">
@@ -437,7 +400,6 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* SPLIT LEADERBOARD UI */}
             <div className="bg-zinc-900/40 backdrop-blur-xl p-5 md:p-8 rounded-2xl border border-zinc-800/50 shadow-2xl space-y-8">
               <div>
                 <h2 className="text-sm md:text-base font-bold text-rose-500 mb-1 uppercase tracking-widest">Recent Standings</h2>
@@ -449,7 +411,7 @@ export default function Dashboard() {
                     recentLeaderboard.map((user: any, i: number) => (
                       <div key={i} className="flex justify-between items-center p-3 bg-zinc-950/30 rounded-lg border border-zinc-800/50 hover:border-zinc-700 transition-colors">
                         <div className="flex items-center space-x-3">
-                          <span className={`text-xs font-mono font-bold ${i === 0 ? 'text-orange-400 drop-shadow-[0_0_5px_rgba(251,146,60,0.5)]' : 'text-zinc-600'}`}>#{i + 1}</span>
+                          <span className={`text-xs font-mono font-bold ${user.rank === 1 ? 'text-orange-400 drop-shadow-[0_0_5px_rgba(251,146,60,0.5)]' : 'text-zinc-600'}`}>#{user.rank}</span>
                           <span className="text-sm font-medium text-zinc-300">{user.name}</span>
                         </div>
                         <span className="text-sm font-bold text-rose-400">{user.score} <span className="text-xs text-zinc-600">/ {user.total}</span></span>
@@ -460,7 +422,45 @@ export default function Dashboard() {
               </div>
 
               <div>
-                <h2 className="text-sm md:text-base font-bold text-orange-400 mb-4 border-b border-zinc-800 pb-3 uppercase tracking-widest">Overall Vanguard</h2>
+                {/* --- NEW: PREVIOUS SEASON WINNER MODULE (TOP 3) --- */}
+                {previousVanguards && previousVanguards.length > 0 && (
+                  <div className="mb-6 p-4 md:p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-zinc-950/80 border border-amber-500/20 shadow-lg">
+                    <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-amber-500/20 pb-3">
+                      👑 Season {currentSeason - 1} Hall of Fame
+                    </h3>
+                    <div className="space-y-2">
+                      {previousVanguards.map((user: any, i: number) => {
+                        // Dynamic styling based on podium finish
+                        const isFirst = user.rank === 1;
+                        const isSecond = user.rank === 2;
+                        
+                        return (
+                          <div key={i} className="flex justify-between items-center bg-zinc-950/60 p-2.5 rounded-lg border border-amber-500/10">
+                            <div className="flex items-center space-x-3">
+                              <span className={`text-xs font-mono font-black ${
+                                isFirst ? 'text-amber-400 drop-shadow-[0_0_5px_rgba(251,191,36,0.6)]' : 
+                                isSecond ? 'text-zinc-300' : 'text-amber-700'
+                              }`}>
+                                #{user.rank}
+                              </span>
+                              <span className={`text-sm font-bold ${isFirst ? 'text-white' : 'text-zinc-300'}`}>
+                                {user.name}
+                              </span>
+                            </div>
+                            <span className="text-sm font-black text-amber-500/80">
+                              {user.score} <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">pts</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* --- RESTORED: CURRENT SEASON OVERALL VANGUARD --- */}
+                <h2 className="text-sm md:text-base font-bold text-orange-400 mb-4 border-b border-zinc-800 pb-3 uppercase tracking-widest">
+                  Season {currentSeason} Vanguard
+                </h2>
                 <div className="space-y-2">
                   {overallLeaderboard.length === 0 ? (
                     <p className="text-zinc-600 text-sm font-medium italic">No global records established.</p>
@@ -468,7 +468,7 @@ export default function Dashboard() {
                     overallLeaderboard.map((user: any, i: number) => (
                       <div key={i} className="flex justify-between items-center p-3 bg-zinc-950/30 rounded-lg border border-zinc-800/50 hover:border-zinc-700 transition-colors">
                         <div className="flex items-center space-x-3">
-                          <span className={`text-xs font-mono font-bold ${i === 0 ? 'text-amber-400 drop-shadow-[0_0_5px_rgba(251,191,36,0.5)]' : 'text-zinc-600'}`}>#{i + 1}</span>
+                          <span className={`text-xs font-mono font-bold ${user.rank === 1 ? 'text-amber-400 drop-shadow-[0_0_5px_rgba(251,191,36,0.5)]' : 'text-zinc-600'}`}>#{user.rank}</span>
                           <span className="text-sm font-medium text-zinc-300">{user.name}</span>
                         </div>
                         <span className="text-sm font-bold text-orange-400">{user.score} <span className="text-xs text-zinc-600 uppercase tracking-widest">pts</span></span>

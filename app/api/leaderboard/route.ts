@@ -11,18 +11,16 @@ export async function GET() {
     await dbConnect();
 
     // 1. RECENT MISSION LEADERBOARD
-    // Find the latest test deployed
     const recentTest = await Test.findOne({}).sort({ createdAt: -1 });
     let recentLeaderboard: any[] = [];
     let recentTitle = "No Active Missions";
 
     if (recentTest) {
       recentTitle = recentTest.title;
-      // Find top 10 submissions for THIS specific test
       const recentSubs = await Submission.find({ testId: recentTest._id })
         .sort({ score: -1 })
-        .limit(10)
-        .populate({ path: 'userId', select: 'name', model: User });
+        .limit(50)
+        .populate({ path: 'userId', select: 'name email', model: User });
 
       recentLeaderboard = recentSubs.map((sub: any) => ({
         id: sub._id,
@@ -30,28 +28,79 @@ export async function GET() {
         score: sub.score,
         total: sub.totalQuestions
       }));
+
+      let rRank = 1, rPrevScore: number | null = null, rActual = 1;
+      recentLeaderboard.forEach((u: any) => {
+        if (rPrevScore !== null && u.score < rPrevScore) rRank = rActual;
+        u.rank = rRank;
+        rPrevScore = u.score;
+        rActual++;
+      });
+      recentLeaderboard = recentLeaderboard.filter(u => u.rank <= 10);
     }
 
-    // --- NEW: VANGUARD SEASONAL CYCLE LOGIC ---
-    // Fetch all tests sorted oldest to newest to calculate the current 3-test block
+    // --- VANGUARD SEASONAL CYCLE LOGIC ---
     const allTests = await Test.find({}).sort({ createdAt: 1 }).select('_id');
     const totalTests = allTests.length;
     let currentCycleTestIds: any[] = [];
+    let currentSeason = 1;
+    let previousVanguards = null; // Will now be an array of top 3
 
     if (totalTests > 0) {
-      // Logic: Tests 1-3 = Index 0. Tests 4-6 = Index 3. Tests 7-9 = Index 6.
-      const cycleStartIndex = Math.floor((totalTests - 1) / 3) * 3;
-      
-      // Isolate only the test IDs belonging to the current active season
+      currentSeason = Math.floor((totalTests - 1) / 3) + 1;
+      const cycleStartIndex = (currentSeason - 1) * 3;
       currentCycleTestIds = allTests.slice(cycleStartIndex).map(t => t._id);
+
+      // --- NEW: TOP 3 HALL OF FAME LOGIC ---
+      if (currentSeason > 1) {
+        const prevStartIndex = (currentSeason - 2) * 3;
+        const prevTestIds = allTests.slice(prevStartIndex, prevStartIndex + 3).map(t => t._id);
+        const prevStrings = prevTestIds.map(id => id.toString());
+
+        const prevAgg = await Submission.aggregate([
+          { $match: { $or: [{ testId: { $in: prevTestIds } }, { testId: { $in: prevStrings } }] } },
+          { $group: { _id: '$userId', totalScore: { $sum: '$score' } } },
+          { $sort: { totalScore: -1 } }
+        ]);
+
+        if (prevAgg.length > 0) {
+          const prevUserIds = prevAgg.map((a: any) => a._id);
+          const prevUsers = await User.find({ _id: { $in: prevUserIds } }, 'name');
+          const prevUserMap: Record<string, string> = {};
+          prevUsers.forEach(u => { prevUserMap[u._id.toString()] = u.name; });
+
+          // Rank the previous season
+          let pRank = 1, pPrevScore: number | null = null, pActual = 1;
+          const rankedPrev = prevAgg.map((agg: any) => {
+             const score = agg.totalScore;
+             if (pPrevScore !== null && score < pPrevScore) pRank = pActual;
+             const currentRank = pRank;
+             pPrevScore = score;
+             pActual++;
+             
+             return {
+               rank: currentRank,
+               score: score,
+               name: prevUserMap[agg._id.toString()] || 'Unknown Agent'
+             };
+          });
+
+          // Grab everyone who achieved Rank 1, 2, or 3 (captures all ties)
+          previousVanguards = rankedPrev.filter(u => u.rank <= 3);
+        }
+      }
     }
 
+    const currentCycleStrings = currentCycleTestIds.map(id => id.toString());
+
     // 2. OVERALL LEADERBOARD (SEASONAL)
-    // Aggregate cumulative scores ONLY for tests in the current cycle block
     const overallAgg = await Submission.aggregate([
       {
         $match: { 
-          testId: { $in: currentCycleTestIds } 
+          $or: [
+            { testId: { $in: currentCycleTestIds } },
+            { testId: { $in: currentCycleStrings } }
+          ]
         }
       },
       { 
@@ -64,25 +113,34 @@ export async function GET() {
       { $sort: { totalScore: -1 } }
     ]);
 
-    // Safely map User data to the aggregated results to avoid serverless lookup bugs
     const userIds = overallAgg.map(agg => agg._id);
-    const users = await User.find({ _id: { $in: userIds } }, 'name');
+    const users = await User.find({ _id: { $in: userIds } }, 'name email'); 
     
-    // Create a dictionary of user IDs to Names
-    const userMap: Record<string, string> = {};
-    users.forEach(u => { userMap[u._id.toString()] = u.name; });
+    const userMap: Record<string, {name: string, email: string}> = {};
+    users.forEach(u => { userMap[u._id.toString()] = { name: u.name, email: u.email }; });
 
-    const overallLeaderboard = overallAgg.map(agg => ({
+    let overallLeaderboard = overallAgg.map(agg => ({
       id: agg._id,
-      name: userMap[agg._id.toString()] || 'Unknown Agent',
+      name: userMap[agg._id.toString()]?.name || 'Unknown Agent',
+      email: userMap[agg._id.toString()]?.email || '',
       score: agg.totalScore,
       total: agg.totalPossible
     }));
 
+    let oRank = 1, oPrevScore: number | null = null, oActual = 1;
+    overallLeaderboard.forEach((u: any) => {
+      if (oPrevScore !== null && u.score < oPrevScore) oRank = oActual;
+      u.rank = oRank;
+      oPrevScore = u.score;
+      oActual++;
+    });
+
     return NextResponse.json({ 
       recentTitle, 
       recentLeaderboard, 
-      overallLeaderboard 
+      overallLeaderboard,
+      currentSeason,
+      previousVanguards
     }, { status: 200 });
 
   } catch (error) {
