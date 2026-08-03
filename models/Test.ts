@@ -2,9 +2,9 @@ import mongoose, { Schema, models } from 'mongoose';
 
 const questionSchema = new Schema({
   questionText: { type: String, required: true },
-  // Relaxed requirement to allow for descriptive questions
   options: [{ type: String }], 
-  correctAnswer: { type: String } 
+  // UPGRADED: Changed to Mixed to support both legacy single strings and new arrays
+  correctAnswer: { type: Schema.Types.Mixed } 
 });
 
 const testSchema = new Schema({
@@ -12,7 +12,6 @@ const testSchema = new Schema({
   subject: { type: String, required: true },
   duration: { type: Number, required: true }, 
   startTime: { type: Date }, 
-  // NEW: Descriptive test fields
   testType: { type: String, enum: ['mcq', 'descriptive'], default: 'mcq' },
   caseStudyText: { type: String }, 
   maxMarks: { type: Number }, 

@@ -11,7 +11,9 @@ export default function TestTakingInterface() {
   
   const [test, setTest] = useState<any>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
+  
+  // UPGRADED: 'any' typing to accommodate strings (descriptive) and string[] (MCQ)
+  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: any }>({});
   
   const [markedForReview, setMarkedForReview] = useState<{ [key: number]: boolean }>({});
   
@@ -68,10 +70,8 @@ export default function TestTakingInterface() {
     if (id) fetchTestAndStatus();
   }, [id, session, status]);
 
-  // --- NEW ANTI-CHEAT PROTOCOL: AUTO-SUBMIT ON TAB SWITCH ---
   useEffect(() => {
     const handleVisibilityChange = () => {
-      // If the document is hidden (user switched tabs) AND the test is active, auto-submit.
       if (document.hidden && test && !isLocked && !alreadyTaken && !isSubmitting && !resultState) {
         submitTest();
       }
@@ -82,7 +82,6 @@ export default function TestTakingInterface() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [test, isLocked, alreadyTaken, isSubmitting, resultState, selectedAnswers, id, session]); 
-  // -----------------------------------------------------------
 
   useEffect(() => {
     if (!isLocked || lockCountdown <= 0) {
@@ -102,8 +101,20 @@ export default function TestTakingInterface() {
     return () => clearInterval(timerId);
   }, [timeLeft, alreadyTaken, isLocked]);
 
+  // UPGRADED: Silent array toggling for MCQ, string preserving for Descriptive
   const handleSelectAnswer = (value: string) => {
-    setSelectedAnswers({ ...selectedAnswers, [currentQuestionIndex]: value });
+    if (test?.testType === 'descriptive') {
+      setSelectedAnswers(prev => ({ ...prev, [currentQuestionIndex]: value }));
+    } else {
+      setSelectedAnswers(prev => {
+        const currentSelected = (prev[currentQuestionIndex] as string[]) || [];
+        if (currentSelected.includes(value)) {
+          return { ...prev, [currentQuestionIndex]: currentSelected.filter(v => v !== value) };
+        } else {
+          return { ...prev, [currentQuestionIndex]: [...currentSelected, value] };
+        }
+      });
+    }
   };
 
   const toggleMarkForReview = () => {
@@ -134,7 +145,6 @@ export default function TestTakingInterface() {
     return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
   };
 
-  // --- RENDERING BLOCK ---
 
   if (status === 'loading') {
     return (
@@ -217,7 +227,6 @@ export default function TestTakingInterface() {
   return (
     <div className="min-h-screen bg-zinc-950 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-900 via-zinc-950 to-zinc-950 text-zinc-100 p-4 md:p-6 font-sans selection:bg-rose-500/30">
       
-      {/* NAVBAR */}
       <div className={`${isDescriptive ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto flex justify-between items-center mb-6 md:mb-8 relative transition-all`}>
         <h1 className={`text-xl md:text-2xl font-black uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r ${isDescriptive ? 'from-purple-500 to-fuchsia-400' : 'from-rose-500 to-orange-400'}`}>
           {isDescriptive ? 'Case Nexus' : 'Quiz Nexus'}
@@ -246,10 +255,8 @@ export default function TestTakingInterface() {
 
       <div className={`${isDescriptive ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto flex flex-col lg:flex-row gap-6 lg:gap-8 transition-all`}>
         
-        {/* LEFT COLUMN: Contains Header, Timer, and Case Study OR Options */}
         <div className={`w-full flex flex-col gap-6 ${isDescriptive ? 'lg:w-1/2' : 'flex-1'}`}>
           
-          {/* HEADER & TIMER */}
           <div className={`flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900/40 backdrop-blur-xl p-5 md:p-6 rounded-2xl border shadow-xl gap-4 md:gap-0 ${isDescriptive ? 'border-purple-500/20' : 'border-zinc-800/50'}`}>
             <div>
               <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tight text-zinc-100 pr-2">{test.title}</h1>
@@ -265,7 +272,6 @@ export default function TestTakingInterface() {
             </div>
           </div>
 
-          {/* DESCRIPTIVE MODE: Left column displays Case Study Document */}
           {isDescriptive && test.caseStudyText && (
              <div className="bg-zinc-900/40 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-purple-500/20 shadow-2xl relative flex-1 min-h-[500px]">
                <h2 className="text-xs md:text-sm font-bold text-purple-400 uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-purple-500/20 pb-3">
@@ -278,7 +284,6 @@ export default function TestTakingInterface() {
              </div>
           )}
 
-          {/* MCQ MODE: Left column displays Question Card & Options */}
           {!isDescriptive && (
             <>
               <div className="bg-zinc-900/40 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-zinc-800/50 shadow-2xl relative overflow-hidden">
@@ -298,7 +303,8 @@ export default function TestTakingInterface() {
                 </p>
                 <div className="space-y-3 md:space-y-4">
                   {currentQuestion.options.map((option: string, idx: number) => {
-                    const isSelected = selectedAnswers[currentQuestionIndex] === option;
+                    // UPGRADED: Checking inclusion within the array
+                    const isSelected = (selectedAnswers[currentQuestionIndex] || []).includes(option);
                     return (
                       <button key={idx} onClick={() => handleSelectAnswer(option)} className={`w-full text-left p-4 md:p-5 rounded-xl border flex items-start md:items-center transition-all duration-200 ${isSelected ? 'bg-rose-950/40 border-rose-500 text-rose-100 shadow-[0_0_15px_rgba(225,29,72,0.15)]' : 'bg-zinc-950/50 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'}`}>
                         <span className={`inline-flex items-center justify-center shrink-0 w-7 h-7 md:w-8 md:h-8 rounded-full border text-center font-mono text-xs md:text-sm mr-3 md:mr-4 mt-0.5 md:mt-0 ${isSelected ? 'border-rose-500 bg-rose-500/20 text-rose-300' : 'border-zinc-700 bg-zinc-900'}`}>{String.fromCharCode(65 + idx)}</span>
@@ -326,7 +332,6 @@ export default function TestTakingInterface() {
           )}
         </div>
 
-        {/* RIGHT COLUMN: Matrix Navigator (MCQ) or Subjective Text Input (Descriptive) */}
         <div className={`w-full shrink-0 flex flex-col gap-6 lg:sticky lg:top-6 lg:self-start ${isDescriptive ? 'lg:w-1/2' : 'lg:w-80'}`}>
           
           <div className="md:hidden flex justify-between items-center bg-zinc-900/40 p-4 rounded-xl border border-zinc-800/50">
@@ -334,7 +339,6 @@ export default function TestTakingInterface() {
             <span className={`text-2xl font-mono font-black ${timeLeft && timeLeft < 60 ? 'text-rose-500 animate-pulse' : 'text-zinc-200'}`}>{timeLeft !== null ? formatTime(timeLeft) : '00:00'}</span>
           </div>
 
-          {/* DESCRIPTIVE MODE: Question and Text Area */}
           {isDescriptive && (
             <div className="flex flex-col gap-6">
               <div className="bg-zinc-900/40 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-zinc-800/50 shadow-2xl relative overflow-hidden flex-1">
@@ -380,7 +384,6 @@ export default function TestTakingInterface() {
             </div>
           )}
 
-          {/* MCQ MODE: Matrix Navigator */}
           {!isDescriptive && (
             <div className="bg-zinc-900/40 backdrop-blur-xl p-5 md:p-6 rounded-2xl border border-zinc-800/50 shadow-2xl">
               <h3 className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-4 border-b border-zinc-800/80 pb-3">Matrix Navigator</h3>
@@ -392,7 +395,10 @@ export default function TestTakingInterface() {
               </div>
               <div className="grid grid-cols-5 gap-2 md:gap-3">
                 {test.questions.map((_: any, i: number) => {
-                  const isAnswered = !!selectedAnswers[i];
+                  // UPGRADED: Proper Matrix indication based on array lengths
+                  const isAnswered = isDescriptive 
+                    ? !!selectedAnswers[i] 
+                    : (Array.isArray(selectedAnswers[i]) && selectedAnswers[i].length > 0);
                   const isFlagged = !!markedForReview[i];
                   const isActive = currentQuestionIndex === i;
                   let btnStyle = "bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500";

@@ -14,7 +14,6 @@ export async function GET(req: Request) {
     const user = await User.findOne({ email });
     if (!user) return NextResponse.json({ hasTaken: false });
 
-    // FIXED: Using testId and userId to match your schema
     const existingSubmission = await Submission.findOne({ testId: testId, userId: user._id });
     return NextResponse.json({ hasTaken: !!existingSubmission }, { status: 200 });
   } catch (error) {
@@ -33,28 +32,43 @@ export async function POST(req: Request) {
     if (!user || !test) return NextResponse.json({ message: 'Not found' }, { status: 404 });
 
     let score = 0;
-    let submissionStatus = 'graded'; // Default to graded for MCQs
+    let submissionStatus = 'graded'; 
 
-    // NEW: Logic Bypass for Descriptive Case Studies
     if (test.testType === 'descriptive') {
       submissionStatus = 'pending';
     } else {
-      // GRADE THE MCQ TEST
+      // UPGRADED: Strict Array Comparison Engine
       test.questions.forEach((q: any, idx: number) => {
-        if (answers[idx] === q.correctAnswer) {
+        const userAns = answers[idx]; 
+        const correctAns = q.correctAnswer; 
+
+        // Normalizes both legacy strings and new arrays into standard arrays for comparison
+        const normalize = (val: any) => {
+          if (!val) return [];
+          return Array.isArray(val) ? val : [val];
+        };
+
+        const normUser = normalize(userAns);
+        const normCorrect = normalize(correctAns);
+
+        // Point awarded ONLY if array lengths match AND all correct options are present
+        const isStrictlyCorrect = 
+          normUser.length === normCorrect.length && 
+          normCorrect.every((val: string) => normUser.includes(val));
+
+        if (isStrictlyCorrect && normCorrect.length > 0) {
           score += 1;
         }
       });
     }
 
-    // FIXED: Added 'answers' and 'status' to the database creation payload
     await Submission.create({
       testId: testId,
       userId: user._id,
       score: score,
       totalQuestions: test.questions.length,
       answers: answers, 
-      status: submissionStatus // This routes it directly to your Evaluation Queue!
+      status: submissionStatus 
     });
 
     return NextResponse.json({ message: 'Success', score, total: test.questions.length }, { status: 201 });
