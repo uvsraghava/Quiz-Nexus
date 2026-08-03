@@ -86,7 +86,7 @@ export default function ReviewPage() {
           </div>
         </div>
 
-        {/* --- ADDED FEATURE: CASE STUDY DOCUMENT LOG --- */}
+        {/* CASE STUDY DOCUMENT LOG */}
         {isDescriptive && test.caseStudyText && (
           <div className="bg-zinc-900/40 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-purple-500/20 shadow-2xl mb-6 md:mb-8">
             <h3 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4 border-b border-purple-500/20 pb-3 flex items-center gap-2">
@@ -99,7 +99,7 @@ export default function ReviewPage() {
           </div>
         )}
 
-        {/* FEEDBACK MODULE (For Graded Descriptive Tests) */}
+        {/* FEEDBACK MODULE */}
         {isDescriptive && !isPending && submission.feedback && (
           <div className="bg-purple-950/20 backdrop-blur-xl p-6 md:p-8 rounded-2xl border border-purple-500/30 shadow-[0_0_30px_rgba(168,85,247,0.05)]">
             <h3 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-4 border-b border-purple-500/20 pb-3">
@@ -114,8 +114,22 @@ export default function ReviewPage() {
         {/* QUESTIONS LOOP */}
         <div className="space-y-6 md:space-y-8">
           {test.questions.map((q: any, index: number) => {
-            const selectedAnswer = submission.answers ? submission.answers[index] : null;
-            const isCorrect = !isDescriptive && selectedAnswer === q.correctAnswer;
+            const rawSelectedAnswer = submission.answers ? submission.answers[index] : null;
+            
+            // UPGRADED: Normalize everything into arrays for strict comparison
+            const normalize = (val: any) => {
+              if (!val) return [];
+              return Array.isArray(val) ? val : [val];
+            };
+
+            const normUser = normalize(rawSelectedAnswer);
+            const normCorrect = normalize(q.correctAnswer);
+
+            // Determine overall question correctness (all-or-nothing matching)
+            const isCorrect = !isDescriptive && 
+                              normUser.length === normCorrect.length && 
+                              normCorrect.every((val: string) => normUser.includes(val)) &&
+                              normCorrect.length > 0;
 
             return (
               <div key={index} className={`bg-zinc-900/40 backdrop-blur-xl p-5 md:p-8 rounded-2xl border shadow-2xl relative overflow-hidden ${isDescriptive ? 'border-purple-500/20' : 'border-zinc-800/50'}`}>
@@ -148,14 +162,16 @@ export default function ReviewPage() {
                 {/* --- DESCRIPTIVE MODE: Show Subjective Answer --- */}
                 {isDescriptive ? (
                   <div className="bg-zinc-950 p-5 rounded-xl border border-zinc-800 text-zinc-300 text-sm md:text-base leading-relaxed whitespace-pre-wrap">
-                    {selectedAnswer ? selectedAnswer : <span className="italic text-zinc-600">No data submitted.</span>}
+                    {rawSelectedAnswer ? rawSelectedAnswer : <span className="italic text-zinc-600">No data submitted.</span>}
                   </div>
                 ) : (
-                  /* --- MCQ MODE: Original Options Logic --- */
+                  /* --- MCQ MODE: Array-based Options Logic --- */
                   <div className="space-y-3 md:space-y-4">
                     {q.options.map((option: string, optIndex: number) => {
-                      const isSelected = selectedAnswer === option;
-                      const isActualCorrect = q.correctAnswer === option;
+                      
+                      // UPGRADED: Check if the option exists within the normalized arrays
+                      const isSelected = normUser.includes(option);
+                      const isActualCorrect = normCorrect.includes(option);
                       
                       let optionStyle = "bg-zinc-950/50 border-zinc-800 text-zinc-400";
                       let badge = null;
@@ -189,7 +205,8 @@ export default function ReviewPage() {
                       );
                     })}
                     
-                    {!selectedAnswer && (
+                    {/* UPGRADED: Null check now looks at array length */}
+                    {normUser.length === 0 && (
                       <div className="mt-4 text-xs md:text-sm text-amber-400 bg-amber-500/10 p-3 md:p-4 rounded-xl border border-amber-500/20 font-medium uppercase tracking-wide">
                         ⚠ Data Not Found: Parameter left blank.
                       </div>
