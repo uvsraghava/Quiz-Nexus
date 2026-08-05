@@ -6,12 +6,27 @@ import Test from '@/models/Test';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await dbConnect();
+    
+    // Identity Check for Contextual Standings
+    const { searchParams } = new URL(req.url);
+    const email = searchParams.get('email');
+    let isAdmin = false;
+    
+    if (email) {
+      const user = await User.findOne({ email });
+      if (user?.role === 'admin') isAdmin = true;
+    }
 
-    // 1. RECENT MISSION LEADERBOARD
-    const recentTest = await Test.findOne({}).sort({ createdAt: -1 });
+    // 1. RECENT MISSION LEADERBOARD (CONTEXT-AWARE)
+    const recentQuery = isAdmin 
+      ? {} 
+      : { $or: [{ isGlobal: { $ne: false } }, { eligibleUsers: email }] };
+      
+    const recentTest = await Test.findOne(recentQuery).sort({ createdAt: -1 });
+    
     let recentLeaderboard: any[] = [];
     let recentTitle = "No Active Missions";
 
@@ -39,19 +54,19 @@ export async function GET() {
       recentLeaderboard = recentLeaderboard.filter(u => u.rank <= 10);
     }
 
-    // --- VANGUARD SEASONAL CYCLE LOGIC ---
-    const allTests = await Test.find({}).sort({ createdAt: 1 }).select('_id');
+    // --- 2. VANGUARD SEASONAL CYCLE (STRICTLY GLOBAL) ---
+    // The $ne: false handles older database documents that don't have the isGlobal boolean yet
+    const allTests = await Test.find({ isGlobal: { $ne: false } }).sort({ createdAt: 1 }).select('_id');
     const totalTests = allTests.length;
     let currentCycleTestIds: any[] = [];
     let currentSeason = 1;
-    let previousVanguards = null; // Will now be an array of top 3
+    let previousVanguards = null; 
 
     if (totalTests > 0) {
       currentSeason = Math.floor((totalTests - 1) / 3) + 1;
       const cycleStartIndex = (currentSeason - 1) * 3;
       currentCycleTestIds = allTests.slice(cycleStartIndex).map(t => t._id);
 
-      // --- NEW: TOP 3 HALL OF FAME LOGIC ---
       if (currentSeason > 1) {
         const prevStartIndex = (currentSeason - 2) * 3;
         const prevTestIds = allTests.slice(prevStartIndex, prevStartIndex + 3).map(t => t._id);
@@ -69,7 +84,6 @@ export async function GET() {
           const prevUserMap: Record<string, string> = {};
           prevUsers.forEach(u => { prevUserMap[u._id.toString()] = u.name; });
 
-          // Rank the previous season
           let pRank = 1, pPrevScore: number | null = null, pActual = 1;
           const rankedPrev = prevAgg.map((agg: any) => {
              const score = agg.totalScore;
@@ -85,7 +99,6 @@ export async function GET() {
              };
           });
 
-          // Grab everyone who achieved Rank 1, 2, or 3 (captures all ties)
           previousVanguards = rankedPrev.filter(u => u.rank <= 3);
         }
       }
@@ -93,7 +106,6 @@ export async function GET() {
 
     const currentCycleStrings = currentCycleTestIds.map(id => id.toString());
 
-    // 2. OVERALL LEADERBOARD (SEASONAL)
     const overallAgg = await Submission.aggregate([
       {
         $match: { 

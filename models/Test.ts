@@ -3,7 +3,6 @@ import mongoose, { Schema, models } from 'mongoose';
 const questionSchema = new Schema({
   questionText: { type: String, required: true },
   options: [{ type: String }], 
-  // UPGRADED: Changed to Mixed to support both legacy single strings and new arrays
   correctAnswer: { type: Schema.Types.Mixed } 
 });
 
@@ -15,6 +14,11 @@ const testSchema = new Schema({
   testType: { type: String, enum: ['mcq', 'descriptive'], default: 'mcq' },
   caseStudyText: { type: String }, 
   maxMarks: { type: Number }, 
+  
+  // NEW: Elective vs Global Targeting Protocol
+  isGlobal: { type: Boolean, default: true }, 
+  eligibleUsers: [{ type: String }], // Stores emails of users cleared for elective access
+  
   questions: [questionSchema],
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });

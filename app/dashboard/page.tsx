@@ -14,6 +14,11 @@ export default function Dashboard() {
     testType: 'mcq', caseStudyText: '', maxMarks: 100
   });
   
+  // Elective Targeting States
+  const [isGlobal, setIsGlobal] = useState(true);
+  const [approvedAgents, setApprovedAgents] = useState([]);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -29,21 +34,24 @@ export default function Dashboard() {
   const [overallLeaderboard, setOverallLeaderboard] = useState([]);
   const [recentTitle, setRecentTitle] = useState('Loading...');
   const [currentSeason, setCurrentSeason] = useState(1);
-  const [previousVanguards, setPreviousVanguards] = useState<any>(null); // NEW: Hall of Fame State
+  const [previousVanguards, setPreviousVanguards] = useState<any>(null); 
   
   // Authorization States
   const [isAdmin, setIsAdmin] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
 
+  // UPGRADED: Handles unauthenticated sessions to prevent infinite loading
   useEffect(() => {
-    if (session?.user?.email) {
+    if (status === 'unauthenticated') {
+      router.push('/');
+    } else if (status === 'authenticated' && session?.user?.email) {
       checkUserStatus();
       fetchArchive();
       fetchLeaderboard();
       fetchMyHistory();
     }
-  }, [session]);
+  }, [session, status, router]);
 
   const checkUserStatus = async () => {
     try {
@@ -55,10 +63,18 @@ export default function Dashboard() {
           setIsAdmin(true);
           fetchPendingUsers();
           fetchPendingEvaluations();
+          fetchApprovedAgents(); 
         }
       }
     } catch (error) { console.error("Auth check failed"); } 
     finally { setAuthChecking(false); }
+  };
+
+  const fetchApprovedAgents = async () => {
+    try {
+      const res = await fetch(`/api/admin/users?email=${session?.user?.email}`);
+      if (res.ok) setApprovedAgents((await res.json()).users);
+    } catch (error) { console.error("Failed to fetch agents"); }
   };
 
   const fetchPendingUsers = async () => {
@@ -91,21 +107,21 @@ export default function Dashboard() {
 
   const fetchArchive = async () => {
     try {
-      const res = await fetch('/api/tests');
+      const res = await fetch(`/api/tests?email=${session?.user?.email}`);
       if (res.ok) setArchive((await res.json()).tests);
     } catch (error) { console.error(error); }
   };
 
   const fetchLeaderboard = async () => {
     try {
-      const res = await fetch('/api/leaderboard');
+      const res = await fetch(`/api/leaderboard?email=${session?.user?.email}`);
       if (res.ok) {
         const data = await res.json();
         setRecentLeaderboard(data.recentLeaderboard || []);
         setOverallLeaderboard(data.overallLeaderboard || []);
         setRecentTitle(data.recentTitle || 'Unknown Test');
         if (data.currentSeason) setCurrentSeason(data.currentSeason);
-        if (data.previousVanguards) setPreviousVanguards(data.previousVanguards); // SETTING HALL OF FAME
+        if (data.previousVanguards) setPreviousVanguards(data.previousVanguards);
       }
     } catch (error) { console.error("Failed to fetch leaderboard"); }
   };
@@ -115,6 +131,14 @@ export default function Dashboard() {
       const res = await fetch(`/api/history?email=${session?.user?.email}`);
       if (res.ok) setMyHistory((await res.json()).history);
     } catch (error) { console.error(error); }
+  };
+
+  const toggleAgentSelection = (email: string) => {
+    if (selectedAgents.includes(email)) {
+      setSelectedAgents(selectedAgents.filter(e => e !== email));
+    } else {
+      setSelectedAgents([...selectedAgents, email]);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -143,6 +167,10 @@ export default function Dashboard() {
         finalStartTime = dateObj.toISOString();
       }
 
+      if (!isGlobal && selectedAgents.length === 0) {
+        throw new Error('YOU MUST SELECT AT LEAST ONE AGENT FOR AN ELECTIVE.');
+      }
+
       const res = await fetch('/api/save-quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -155,13 +183,17 @@ export default function Dashboard() {
           startTime: finalStartTime,
           testType: formData.testType,
           caseStudyText: formData.testType === 'descriptive' ? formData.caseStudyText : undefined,
-          maxMarks: formData.testType === 'descriptive' ? Number(formData.maxMarks) : undefined
+          maxMarks: formData.testType === 'descriptive' ? Number(formData.maxMarks) : undefined,
+          isGlobal,
+          eligibleUsers: isGlobal ? [] : selectedAgents
         }),
       });
       
       if (res.ok) {
         setMessage('Protocol deployed to the mainframe. 🚀');
         setFormData({ title: '', subject: '', duration: 30, jsonQuestions: '', scheduledTime: '', testType: 'mcq', caseStudyText: '', maxMarks: 100 });
+        setSelectedAgents([]);
+        setIsGlobal(true);
         fetchArchive(); 
         fetchLeaderboard(); 
       } else {
@@ -249,8 +281,8 @@ export default function Dashboard() {
                   </h2>
                   
                   <div className="flex space-x-2 mb-6 p-1 bg-zinc-950/80 rounded-xl border border-zinc-800/80">
-                    <button onClick={() => setFormData({...formData, testType: 'mcq'})} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'mcq' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}>MCQ Matrix</button>
-                    <button onClick={() => setFormData({...formData, testType: 'descriptive'})} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'descriptive' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}>Case Study</button>
+                    <button type="button" onClick={() => setFormData({...formData, testType: 'mcq'})} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'mcq' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}>MCQ Matrix</button>
+                    <button type="button" onClick={() => setFormData({...formData, testType: 'descriptive'})} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${formData.testType === 'descriptive' ? 'bg-zinc-800 text-zinc-100 shadow-md' : 'text-zinc-600 hover:text-zinc-400'}`}>Case Study</button>
                   </div>
 
                   <form onSubmit={handleSubmit} className="space-y-5 md:space-y-6">
@@ -265,6 +297,46 @@ export default function Dashboard() {
                       <input type="datetime-local" value={formData.scheduledTime} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all text-sm md:text-base [color-scheme:dark]" onChange={(e) => setFormData({ ...formData, scheduledTime: e.target.value })} />
                     </div>
 
+                    <div className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-950/30">
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-3">Audience Targeting</label>
+                      <div className="flex space-x-2">
+                        <button type="button" onClick={() => { setIsGlobal(true); setSelectedAgents([]); }} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${isGlobal ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30 shadow-md' : 'bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300'}`}>Global Vanguard</button>
+                        <button type="button" onClick={() => setIsGlobal(false)} className={`flex-1 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${!isGlobal ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30 shadow-md' : 'bg-zinc-900 text-zinc-500 border border-zinc-800 hover:text-zinc-300'}`}>Targeted Elective</button>
+                      </div>
+                      
+                      {!isGlobal && (
+                        <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                          <div className="flex justify-between items-end mb-2">
+                            <label className="block text-[10px] font-bold text-purple-400 uppercase tracking-widest">Select Eligible Agents</label>
+                            <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{selectedAgents.length} Selected</span>
+                          </div>
+                          <div className="max-h-52 overflow-y-auto custom-scrollbar border border-purple-500/20 rounded-xl bg-zinc-950/50 p-2 space-y-1">
+                            {approvedAgents.length === 0 ? (
+                              <p className="text-xs text-zinc-500 p-2 italic text-center">No approved agents available.</p>
+                            ) : (
+                              approvedAgents.map((agent: any) => {
+                                const isSelected = selectedAgents.includes(agent.email);
+                                return (
+                                  <label key={agent.email} className={`flex items-center space-x-3 p-3 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-purple-500/10 border-purple-500/30' : 'border-transparent hover:bg-zinc-900 hover:border-zinc-800'}`}>
+                                    <input 
+                                      type="checkbox" 
+                                      checked={isSelected}
+                                      onChange={() => toggleAgentSelection(agent.email)}
+                                      className="w-4 h-4 rounded border-zinc-700 text-purple-500 focus:ring-purple-500 bg-zinc-950 focus:ring-offset-zinc-950" 
+                                    />
+                                    <div className="flex flex-col">
+                                      <span className={`text-sm font-bold ${isSelected ? 'text-purple-300' : 'text-zinc-300'}`}>{agent.name}</span>
+                                      <span className="text-xs font-mono text-zinc-500">{agent.email}</span>
+                                    </div>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {formData.testType === 'descriptive' && (
                       <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div>
@@ -273,12 +345,12 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Case Study Document</label>
-                          <textarea placeholder="Paste the full case study text here..." rows={6} value={formData.caseStudyText} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-rose-500 transition-all text-sm" onChange={(e) => setFormData({ ...formData, caseStudyText: e.target.value })} required />
+                          <textarea placeholder="Paste the full case study text here..." rows={6} value={formData.caseStudyText} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-zinc-200 placeholder-zinc-700 focus:outline-none focus:border-rose-500 transition-all text-sm custom-scrollbar" onChange={(e) => setFormData({ ...formData, caseStudyText: e.target.value })} required />
                         </div>
                       </div>
                     )}
 
-                    <textarea placeholder={formData.testType === 'mcq' ? "Paste MCQ JSON Array here..." : 'Paste Questions JSON Array here...\ne.g. [\n  "Analyze the current market strategy.",\n  "How does this affect overall ROI?"\n]'} rows={formData.testType === 'mcq' ? 8 : 4} value={formData.jsonQuestions} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-rose-200/80 placeholder-zinc-700 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono text-xs md:text-sm transition-all" onChange={(e) => setFormData({ ...formData, jsonQuestions: e.target.value })} required />
+                    <textarea placeholder={formData.testType === 'mcq' ? "Paste MCQ JSON Array here..." : 'Paste Questions JSON Array here...\ne.g. [\n  "Analyze the current market strategy.",\n  "How does this affect overall ROI?"\n]'} rows={formData.testType === 'mcq' ? 8 : 4} value={formData.jsonQuestions} className="w-full p-3 md:p-4 border border-zinc-800 rounded-xl bg-zinc-950/50 text-rose-200/80 placeholder-zinc-700 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 font-mono text-xs md:text-sm transition-all custom-scrollbar" onChange={(e) => setFormData({ ...formData, jsonQuestions: e.target.value })} required />
                     
                     <button type="submit" disabled={isLoading} className="w-full bg-gradient-to-r from-rose-600 to-orange-500 text-white p-4 rounded-xl font-black uppercase tracking-widest text-sm hover:scale-[1.01] transition-transform shadow-[0_0_20px_rgba(225,29,72,0.15)] disabled:opacity-50 disabled:scale-100">
                       {isLoading ? 'Encrypting Payload...' : formData.scheduledTime ? 'Schedule Protocol' : 'Deploy Protocol Live'}
@@ -380,15 +452,17 @@ export default function Dashboard() {
                   {archive.map((test: any) => {
                     const isScheduled = test.startTime && new Date(test.startTime).getTime() > Date.now();
                     const isDescriptive = test.testType === 'descriptive'; 
+                    const isElective = test.isGlobal === false; 
                     
                     return (
                     <div key={test._id} className={`p-4 border rounded-xl transition-colors flex justify-between items-center group relative overflow-hidden ${isScheduled ? 'border-amber-500/20 bg-zinc-950/40' : 'border-zinc-800 bg-zinc-950/40 hover:border-rose-500/50'}`}>
-                      <div className={`absolute top-0 left-0 w-1 h-full ${isScheduled ? 'bg-amber-500' : isDescriptive ? 'bg-purple-500' : 'bg-rose-500'} ${isScheduled ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}></div>
+                      <div className={`absolute top-0 left-0 w-1 h-full ${isScheduled ? 'bg-amber-500' : isElective ? 'bg-purple-500' : isDescriptive ? 'bg-blue-500' : 'bg-rose-500'} ${isScheduled ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`}></div>
                       <div className="pr-4">
                         <h3 className="font-bold text-zinc-200 line-clamp-1">{test.title}</h3>
                         <p className="text-xs text-zinc-500 mt-1 uppercase tracking-wide">
                           {isScheduled ? <span className="text-amber-400 font-bold text-[10px] md:text-xs">Scheduled</span> : `${test.subject} • ${test.duration}m`}
-                          {isDescriptive && <span className="ml-2 text-[9px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-bold">CASE</span>}
+                          {isDescriptive && <span className="ml-2 text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-bold">CASE</span>}
+                          {isElective && <span className="ml-2 text-[9px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-bold">ELECTIVE</span>}
                         </p>
                       </div>
                       <button onClick={() => router.push(`/test/${test._id}`)} className={`px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition-all shrink-0 ${isScheduled ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500 hover:text-zinc-950' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white'}`}>
@@ -422,7 +496,6 @@ export default function Dashboard() {
               </div>
 
               <div>
-                {/* --- NEW: PREVIOUS SEASON WINNER MODULE (TOP 3) --- */}
                 {previousVanguards && previousVanguards.length > 0 && (
                   <div className="mb-6 p-4 md:p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-zinc-950/80 border border-amber-500/20 shadow-lg">
                     <h3 className="text-xs font-black text-amber-500 uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-amber-500/20 pb-3">
@@ -430,7 +503,6 @@ export default function Dashboard() {
                     </h3>
                     <div className="space-y-2">
                       {previousVanguards.map((user: any, i: number) => {
-                        // Dynamic styling based on podium finish
                         const isFirst = user.rank === 1;
                         const isSecond = user.rank === 2;
                         
@@ -457,7 +529,6 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* --- RESTORED: CURRENT SEASON OVERALL VANGUARD --- */}
                 <h2 className="text-sm md:text-base font-bold text-orange-400 mb-4 border-b border-zinc-800 pb-3 uppercase tracking-widest">
                   Season {currentSeason} Vanguard
                 </h2>
